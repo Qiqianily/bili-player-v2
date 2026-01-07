@@ -17,6 +17,9 @@ pub enum PlayerError {
 
     #[error("State transition failed: {0}")]
     StateTransition(String),
+
+    #[error("Playlist error: {0}")]
+    Playlist(String),
 }
 
 impl From<gstreamer::glib::BoolError> for PlayerError {
