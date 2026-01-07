@@ -20,6 +20,15 @@ pub enum PlayerError {
 
     #[error("Playlist error: {0}")]
     Playlist(String),
+
+    #[error("Volume out of range: {0}")]
+    VolumeRange(String),
+
+    #[error("Audio element error: {0}")]
+    AudioElement(String),
+
+    #[error("Pipeline error: {0}")]
+    Pipeline(String),
 }
 
 impl From<gstreamer::glib::BoolError> for PlayerError {
