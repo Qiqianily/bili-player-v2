@@ -1,0 +1,163 @@
+use std::{future::pending, sync::Arc};
+
+use tokio::{
+    select,
+    sync::{Mutex, mpsc},
+};
+
+use crate::{
+    errors::{PlayerError, PlayerResult},
+    player::{
+        command::PlayerCommand, music_data::get_music_data, playback::PlaybackManager,
+        playlist::PlaylistManager, volume::VolumeManager,
+    },
+};
+
+pub struct AudioPlayer {
+    pub playback_manager: Arc<Mutex<PlaybackManager>>, // 播放管理
+    pub volume_manager: Arc<VolumeManager>,            // 音量管理
+    pub playlist_manager: Arc<PlaylistManager>,        // 播放列表管理
+    pub client: Arc<reqwest::Client>,                  // HTTP客户端
+    eos_receiver: Mutex<Option<mpsc::Receiver<()>>>,   // EOS事件接收器
+    command_receiver: mpsc::Receiver<PlayerCommand>,   // 命令接收器
+}
+// pub state_sender: broadcast::Sender<PlayerState>, // 状态发送器
+impl AudioPlayer {
+    pub async fn new() -> PlayerResult<(Self, mpsc::Sender<PlayerCommand>)> {
+        // 1. 初始化 GStreamer 和 Pipeline
+        gstreamer::init().map_err(|e| PlayerError::GstInit(e.to_string()))?;
+        let pipeline = gstreamer::Pipeline::new();
+
+        // 2. 初始化播放列表
+        let playlist_manager = Arc::new(PlaylistManager::new());
+        let music_data = get_music_data();
+        for music in music_data {
+            playlist_manager.add_music(music).await;
+        }
+
+        // 3. 创建发送播放结束的信号通道
+        let (eos_sender, eos_receiver) = mpsc::channel::<()>(1);
+        // 4. 创建播放管理器
+        let playback_manager = PlaybackManager::new(pipeline, Some(eos_sender));
+
+        // 5. 创建 volume_manager 组件
+        let volume_manager = Arc::new(VolumeManager::new());
+
+        // 6. 创建发送播放结束的信号通道
+        let (cmd_sender, cmd_receiver) = mpsc::channel::<PlayerCommand>(1);
+        // 7. 创建播放器实例
+        let player = Self {
+            playback_manager: Arc::new(Mutex::new(playback_manager)),
+            volume_manager,
+            client: Arc::new(reqwest::Client::new()),
+            playlist_manager,
+            eos_receiver: Mutex::new(Some(eos_receiver)),
+            command_receiver: cmd_receiver,
+        };
+        // // 启动后台任务
+        // player.start_background_tasks(command_receiver).await?;
+        Ok((player, cmd_sender))
+    }
+    /// 运行播放器
+    pub async fn run(&mut self) -> PlayerResult<()> {
+        // 获取 EOS 接收器
+        let mut eos_receiver = self.eos_receiver.lock().await.take();
+        // 监听通道信号变化
+        loop {
+            select! {
+                cmd = self.command_receiver.recv() => {
+                    if let Some(command) = cmd {
+                        self.handle_command(command).await?;
+                    } else {
+                        break; // sender dropped
+                    }
+                }
+                _ = async {
+                    if let Some(ref mut r) = eos_receiver {
+                        r.recv().await
+                    } else {
+                        pending::<Option<()>>().await
+                    }
+                }, if eos_receiver.is_some() => {
+                    println!("[EOS] Playing next track...");
+                    // 触发下一首逻辑（内联，不走 command channel）
+                    if self.playlist_manager.move_to_next().await?
+                        && let Some(music) = self.playlist_manager.get_current_music().await {
+                            let client = self.client.clone();
+                            let mut playback = self.playback_manager.lock().await;
+                            let volume = self.volume_manager.get_gstreamer_volume();
+                            playback.play_music(&client, &music, volume).await?;
+                        }
+
+                }
+            }
+        }
+        Ok(())
+    }
+    // 把命令处理逻辑抽到 handle_command
+    async fn handle_command(&self, command: PlayerCommand) -> PlayerResult<()> {
+        match command {
+            PlayerCommand::Play => {
+                if let Some(music) = self.playlist_manager.get_current_music().await {
+                    let client = self.client.clone();
+                    let mut playback = self.playback_manager.lock().await;
+                    let volume = self.volume_manager.get_gstreamer_volume();
+                    playback.play_music(&client, &music, volume).await?;
+                }
+            }
+            PlayerCommand::PlayBvid(_req) => {
+                // 1. 解析 BVID -> 获取音频 URL（调用 Bilibili API？）
+                // 2. 加载到播放器
+                // let uri = self.resolve_bvid_to_uri(&req.bvid).await?;
+                // self.playback_manager.load_uri(&uri).await?;
+                // self.playback_manager.play().await?;
+            }
+            PlayerCommand::Pause => {
+                // self.playback_manager.pause().await?;
+            }
+            PlayerCommand::Stop => {
+                // self.playback_manager.stop().await?;
+            }
+            PlayerCommand::Next => {
+                // if let Some(music) = self.playlist_manager.get_next().await {
+                //     self.playback_manager.load_uri(&music.uri).await?;
+                //     self.playback_manager.play().await?;
+                // }
+            }
+            PlayerCommand::Previous => {
+                // if let Some(music) = self.playlist_manager.get_previous().await {
+                //     self.playback_manager.load_uri(&music.uri).await?;
+                //     self.playback_manager.play().await?;
+                // }
+            }
+            PlayerCommand::SetModel(_req) => {
+                // 假设 SetModel 是切换播放模式（单曲、列表、随机等）
+                // self.playlist_manager.set_mode(req.mode).await;
+            }
+            PlayerCommand::SetVolume(_req) => {
+                // self.volume_manager.set_volume(req.volume).await?;
+            }
+            PlayerCommand::AddPlaylist(_req) => {
+                // for music in req.musics {
+                //     self.playlist_manager.add_music(music).await;
+                // }
+            }
+            PlayerCommand::Delete(_req) => {
+                // self.playlist_manager.remove_by_id(&req.id).await;
+            }
+            PlayerCommand::GetState(_sender) => {
+                // let state = self.get_current_state().await;
+                // let _ = sender.send(state); // 忽略发送失败（调用方可能已 drop）
+            }
+            PlayerCommand::ShowPlaylist() => {
+                // 可能用于调试，或触发状态更新
+                // self.log_playlist().await;
+            }
+            PlayerCommand::Seek(_position_micros) => {
+                // let duration = std::time::Duration::from_micros(position_micros);
+                // self.playback_manager.seek(duration).await?;
+            }
+        }
+        Ok(())
+    }
+}

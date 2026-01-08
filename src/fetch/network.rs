@@ -30,7 +30,7 @@ const BASE_FETCH_VIDEO_API_URL: &str = "https://api.bilibili.com/x/web-interface
 /// ```
 pub async fn fetch_audio_url(client: &Client, bvid: &str, cid: &str) -> PlayerResult<String> {
     let url = format!("{}&bvid={}&cid={}", BASE_FETCH_AUDIO_API_URL, bvid, cid);
-    tracing::info!("Fetching audio URL...");
+    // tracing::info!("Fetching audio URL...");
     let response = client.get(&url).send().await?;
     let json: Value = response.json().await?;
     json["data"]["dash"]["audio"][0]["baseUrl"]

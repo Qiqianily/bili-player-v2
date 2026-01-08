@@ -1,4 +1,4 @@
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MusicInfo {
     pub bvid: String,           // BV1oZqqBZEGZ
     pub cid: String,            // 34856567673

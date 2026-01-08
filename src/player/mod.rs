@@ -1,5 +1,11 @@
 pub mod audio_chain;
+pub mod audio_player;
+pub mod command;
+pub mod event;
 pub mod model;
+pub mod music_data;
 pub mod play_mode;
+pub mod playback;
 pub mod playlist;
+pub mod state;
 pub mod volume;
