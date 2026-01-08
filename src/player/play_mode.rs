@@ -14,4 +14,12 @@ impl PlayMode {
             PlayMode::RepeatAll => "全曲循环".to_string(),
         }
     }
+    pub fn from_string(s: &str) -> Option<PlayMode> {
+        match s {
+            "shuffle" => Some(PlayMode::Shuffle),
+            "repeat" => Some(PlayMode::Repeat),
+            "repeat_all" => Some(PlayMode::RepeatAll),
+            _ => Some(PlayMode::Normal),
+        }
+    }
 }

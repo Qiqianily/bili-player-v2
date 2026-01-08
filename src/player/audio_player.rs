@@ -88,7 +88,6 @@ impl AudioPlayer {
                             let volume = self.volume_manager.get_gstreamer_volume();
                             playback.play_music(&client, &music, volume).await?;
                         }
-
                 }
             }
         }
@@ -113,16 +112,22 @@ impl AudioPlayer {
                 // self.playback_manager.play().await?;
             }
             PlayerCommand::Pause => {
-                // self.playback_manager.pause().await?;
+                let playback = self.playback_manager.lock().await;
+                playback.pause().await?;
             }
             PlayerCommand::Stop => {
-                // self.playback_manager.stop().await?;
+                let mut playback = self.playback_manager.lock().await;
+                playback.stop().await?;
             }
             PlayerCommand::Next => {
-                // if let Some(music) = self.playlist_manager.get_next().await {
-                //     self.playback_manager.load_uri(&music.uri).await?;
-                //     self.playback_manager.play().await?;
-                // }
+                if self.playlist_manager.move_to_next().await?
+                    && let Some(music) = self.playlist_manager.get_current_music().await
+                {
+                    let client = self.client.clone();
+                    let mut playback = self.playback_manager.lock().await;
+                    let volume = self.volume_manager.get_gstreamer_volume();
+                    playback.play_music(&client, &music, volume).await?;
+                }
             }
             PlayerCommand::Previous => {
                 // if let Some(music) = self.playlist_manager.get_previous().await {

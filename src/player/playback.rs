@@ -1,10 +1,16 @@
 use gstreamer::{
     GenericFormattedValue,
     format::FormattedValue,
-    prelude::{ElementExt, ElementExtManual, GstBinExt, GstBinExtManual},
+    prelude::{ElementExt, ElementExtManual},
 };
-use std::sync::Arc;
-use tokio::sync::{Mutex, mpsc};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
+use tokio::{
+    sync::{Mutex, mpsc},
+    task::JoinHandle,
+};
 
 use crate::{
     errors::{PlayerError, PlayerResult},
@@ -20,6 +26,7 @@ pub enum PlaybackState {
     Paused,  // 暂停播放状态
     Ended,   // 播放结束状态
     Error,   // 播放错误状态
+    Stopped, // 停止播放状态
 }
 impl PlaybackState {
     pub fn get_string(&self) -> String {
@@ -30,6 +37,7 @@ impl PlaybackState {
             Self::Paused => "暂停播放状态".into(),
             Self::Ended => "播放结束状态".into(),
             Self::Error => "播放错误状态".into(),
+            Self::Stopped => "停止播放状态".into(),
         }
     }
 }
@@ -38,8 +46,16 @@ pub struct PlaybackManager {
     pub playback_state: Arc<Mutex<PlaybackState>>, // 播放状态
     pub current_music: Mutex<Option<MusicInfo>>,   // 当前播放音乐信息
     pub eos_sender: Option<mpsc::Sender<()>>,      // 播放结束信号发送器
+    stop_flag: Arc<AtomicBool>,                    // 是否需要停止
+    current_bus_watcher: Option<JoinHandle<()>>,   // 当前正在运行的后台监听任务句柄
 }
-
+// === 新增字段（用于管理后台监听任务）===
+// stop_flag
+// 标志位：通知 GStreamer 消息监听线程是否应主动退出
+// 使用 `AtomicBool` 保证跨线程安全的无锁读写
+// current_bus_watcher
+// 保存当前正在运行的 `spawn_blocking` 任务的句柄
+// 这样在切换歌曲或停止时，我们可以知道是否有旧任务需要清理
 impl PlaybackManager {
     /// PlaybackManager 的构造函数
     pub fn new(pipeline: gstreamer::Pipeline, eos_sender: Option<mpsc::Sender<()>>) -> Self {
@@ -48,120 +64,130 @@ impl PlaybackManager {
             playback_state: Arc::new(Mutex::new(PlaybackState::Idle)),
             current_music: Mutex::new(None),
             eos_sender,
+            stop_flag: Arc::new(AtomicBool::new(false)),
+            current_bus_watcher: None,
         }
     }
     /// 获取播放管道
     pub fn get_pipeline(&self) -> &gstreamer::Pipeline {
         &self.pipeline
     }
-    /// 播放音频
+    /// 播放音乐
     pub async fn play_music(
         &mut self,
         client: &reqwest::Client,
         music: &MusicInfo,
         volume: f64,
     ) -> PlayerResult<()> {
-        // 请求音频的 url
-        let url = fetch_and_verify_audio_url(client, music.bvid.as_str(), music.cid.as_str())
+        // 1️⃣ 获取音频真实播放 URL（调用 Bilibili API）
+        let url = fetch_and_verify_audio_url(client, &music.bvid, &music.cid)
             .await
             .map_err(|_| PlayerError::FetchError("Fetch audio URL failed".into()))?;
-        // 停止先前的播放
+
+        // 2️⃣ 停止当前正在播放的音乐（清理旧资源）
+        //    这会触发 stop_flag 设置 + 旧任务清理 + pipeline 重置
         self.stop().await?;
-        // 构建播放管道
+
+        // 3️⃣ 为新歌曲构建 GStreamer 播放管道
+        //    （内部会设置 URI、音量、总线等）
         self.build_pipeline(url.as_str(), volume).await?;
-        // 开始播放
+
+        // 4️⃣ 更新当前播放的音乐信息（供状态查询使用）
+        {
+            let mut current_music = self.current_music.lock().await;
+            *current_music = Some(music.clone());
+        }
+        // 5️⃣ 更新全局播放状态为 "Playing"
+        {
+            let mut state = self.playback_state.lock().await;
+            *state = PlaybackState::Playing;
+            tracing::info!("Playback state set to: Playing");
+        }
+
+        // 6️⃣ 启动 GStreamer pipeline 开始播放
         self.pipeline
             .set_state(gstreamer::State::Playing)
             .map_err(|e| {
                 PlayerError::StateTransition(format!("Failed to start playback: {}", e))
             })?;
-        // 存储当前播放的 music
-        {
-            let mut current_music = self.current_music.lock().await;
-            *current_music = Some(music.clone());
-            // tracing::info!("set current music {}", music.title);
-        }
-        {
-            let mut state = self.playback_state.lock().await;
-            *state = PlaybackState::Playing;
-            tracing::info!("set playback state: {}", state.get_string());
-        }
+
         tracing::info!("Started playback: {}", music.title);
-        // Watch GStreamer bus messages
-        // self.watch_bus();
-        // ✅ 获取总线
+
+        // 7️⃣ 获取 GStreamer 消息总线（用于监听 EOS、Error 等事件）
         let bus = self
             .pipeline
             .bus()
             .ok_or_else(|| PlayerError::Pipeline("Failed to get GStreamer bus".to_string()))?;
-        // let state_arc = self.playback_state.clone();
-        // let eos_sender = self.eos_sender.clone();
-        for msg in bus.iter_timed(gstreamer::ClockTime::NONE) {
-            match msg.view() {
-                gstreamer::MessageView::Eos(_) => {
-                    tracing::info!("{} 播放完成!", music.title);
-                    if let Some(eos_sender_clone) = self.eos_sender.clone() {
-                        let _ = eos_sender_clone.send(()).await;
-                    }
+
+        // 8️⃣ 为新监听任务创建独立的控制标志
+        //    每次播放新歌都用新的 stop_flag，避免干扰
+        let stop_flag = Arc::new(AtomicBool::new(false));
+        let stop_flag_clone = stop_flag.clone(); // 供后台任务使用
+
+        // 9️⃣ 克隆需要在后台任务中使用的数据
+        let eos_sender = self.eos_sender.clone(); // 通道可能为空（可选）
+        let music_title = music.title.clone(); // 用于日志
+        // let pipeline = self.pipeline.clone(); // 假设 pipeline 是 Arc<...>，否则需要调整
+
+        // 🔟 启动后台线程监听 GStreamer 消息（关键！不阻塞 async 任务）
+        let watcher_handle = tokio::task::spawn_blocking(move || {
+            use gstreamer::MessageView;
+
+            tracing::debug!("GStreamer bus watcher started for: {}", music_title);
+
+            // 循环监听消息，直到收到 EOS、Error 或被要求停止
+            loop {
+                // ✅ 检查是否被外部请求停止（如切换歌曲、用户点击 Stop）
+                if stop_flag_clone.load(Ordering::Relaxed) {
+                    tracing::debug!(
+                        "Bus watcher stopped by external request for: {}",
+                        music_title
+                    );
                     break;
                 }
-                gstreamer::MessageView::Error(err) => {
-                    tracing::error!(
-                        "播放错误: {} (源: {})",
-                        err.error(),
-                        err.src().map(|s| s.to_string()).unwrap_or_default()
-                    );
+
+                // ⏳ 从总线获取消息（最多等待 1s，避免无限阻塞）
+                match bus.timed_pop(gstreamer::ClockTime::from_seconds(1)) {
+                    Some(msg) => match msg.view() {
+                        // 🎯 播放正常结束（End Of Stream）
+                        MessageView::Eos(_) => {
+                            tracing::info!("Playback finished: {}", music_title);
+                            // 通知主逻辑：可以播放下一首了
+                            if let Some(sender) = &eos_sender {
+                                let _ = sender.blocking_send(());
+                            }
+                            break; // 退出监听循环
+                        }
+
+                        // ❌ 播放发生错误
+                        MessageView::Error(err) => {
+                            tracing::error!(
+                                "GStreamer playback error for {}: {}\nDebug: {}",
+                                music_title,
+                                err.error(),
+                                err.debug().unwrap_or_default()
+                            );
+                            break; // 退出监听循环
+                        }
+
+                        // 其他消息（如缓冲、标签等）可选择忽略
+                        _ => {}
+                    },
+
+                    // 超时（500ms 内无消息），继续循环
+                    None => continue,
                 }
-                _ => {}
             }
-        }
-        // ✅ 启动后台任务处理消息
-        // tokio::spawn(async move {
-        //     loop {
-        //         // 等待消息（最多 500ms）
-        //         let msg = bus.timed_pop(gstreamer::ClockTime::from_mseconds(500));
-        //         match msg {
-        //             Some(msg) => {
-        //                 use gstreamer::MessageView;
-        //                 match msg.view() {
-        //                     MessageView::Eos(..) => {
-        //                         tracing::info!("EOS");
-        //                         *state_arc.lock().await = PlaybackState::Ended;
-        //                         if let Some(sender) = &eos_sender {
-        //                             let res = sender.send(()).await;
-        //                             if let Ok(res) = res {
-        //                                 tracing::info!("EOS send result: {:?}", res);
-        //                             }
-        //                         }
-        //                         break; // 播放结束，退出循环
-        //                     }
-        //                     MessageView::Error(err) => {
-        //                         eprintln!("Error: {}", err.error());
-        //                         *state_arc.lock().await = PlaybackState::Idle;
-        //                         break;
-        //                     }
-        //                     // MessageView::StateChanged(sc) => {
-        //                     //     if let Some(new_state) = match sc.current() {
-        //                     //         gstreamer::State::Playing => Some(PlaybackState::Playing),
-        //                     //         gstreamer::State::Paused => Some(PlaybackState::Paused),
-        //                     //         gstreamer::State::Ready => Some(PlaybackState::Ready),
-        //                     //         gstreamer::State::Null => Some(PlaybackState::Idle),
-        //                     //         _ => None,
-        //                     //     } {
-        //                     //         *state_arc.lock().unwrap() = new_state;
-        //                     //     }
-        //                     // }
-        //                     _ => {}
-        //                 }
-        //             }
-        //             None => {
-        //                 // 超时，继续循环（可加日志或退出条件）
-        //             }
-        //         }
-        //     }
-        // });
-        // 清理
-        self.pipeline.set_state(gstreamer::State::Null).unwrap();
+
+            tracing::debug!("GStreamer bus watcher exited for: {}", music_title);
+        });
+
+        // 🔚 保存新任务的控制信息，用于下次 stop() 时清理
+        self.stop_flag = stop_flag;
+        self.current_bus_watcher = Some(watcher_handle);
+
+        // ✅ 立即返回！不等待播放结束
+        //    此时歌曲已在后台播放，主逻辑可继续处理其他命令（如 Next、Stop）
         Ok(())
     }
     pub async fn play(&self) -> PlayerResult<()> {
@@ -208,21 +234,38 @@ impl PlaybackManager {
         Ok(())
     }
     /// 停止播放
-    pub async fn stop(&self) -> PlayerResult<()> {
-        // 如果是在播放状态
+    pub async fn stop(&mut self) -> PlayerResult<()> {
+        // 1️⃣ 通知 GStreamer 消息监听线程：立即退出循环
+        //    这样它就不会再尝试从已销毁的 bus 读取消息
+        self.stop_flag.store(true, Ordering::Relaxed);
+        // 2️⃣ 获取并移除当前的任务句柄（如果存在）
+        if let Some(handle) = self.current_bus_watcher.take() {
+            // 3️⃣ 启动一个后台 async 任务来等待 blocking 任务结束
+            //    ⚠️ 不能直接 .await，因为 handle 是 spawn_blocking 任务（阻塞型），
+            //    在 async 上下文中直接 await 会阻塞当前任务！
+            tokio::spawn(async move {
+                // 等待 spawn_blocking 任务完全退出
+                // （正常情况下它会在下一次循环检查 stop_flag 后退出）
+                let _ = handle.await;
+                tracing::debug!("GStreamer bus watcher task exited cleanly");
+            });
+        }
+        // 4️⃣ 停止 GStreamer pipeline（关键！释放音频设备、网络连接等资源）
+        if self.pipeline.set_state(gstreamer::State::Null).is_err() {
+            tracing::warn!("Failed to set GStreamer pipeline to Null state");
+        }
+        // 5️⃣ 清空当前播放的音乐信息
         {
-            let mut state = self.playback_state.lock().await;
-            if *state != PlaybackState::Idle {
-                self.pipeline
-                    .set_state(gstreamer::State::Null)
-                    .map_err(|e| PlayerError::StateTransition(e.to_string()))?;
-                *state = PlaybackState::Idle;
-                tracing::info!("Playback paused");
-            }
+            let mut current_music = self.current_music.lock().await;
+            *current_music = None;
         }
 
-        // 清理管道
-        self.cleanup_pipeline().await?;
+        // 6️⃣ 更新全局播放状态为 "Stopped"
+        {
+            let mut state = self.playback_state.lock().await;
+            *state = PlaybackState::Stopped;
+            tracing::info!("Playback state set to: Stopped");
+        }
         Ok(())
     }
     /// 获取当前播放位置
@@ -345,26 +388,26 @@ impl PlaybackManager {
     // });
     // }
 
-    /// 清理播放器
-    async fn cleanup_pipeline(&self) -> PlayerResult<()> {
-        // 获取管道中的所有元素
-        let children = self.pipeline.children();
+    // /// 清理播放器
+    // async fn cleanup_pipeline(&self) -> PlayerResult<()> {
+    //     // 获取管道中的所有元素
+    //     let children = self.pipeline.children();
 
-        // 先停止所有元素
-        for child in &children {
-            child.set_state(gstreamer::State::Null).ok();
-        }
+    //     // 先停止所有元素
+    //     for child in &children {
+    //         child.set_state(gstreamer::State::Null).ok();
+    //     }
 
-        // 从管道中移除所有元素
-        for child in children {
-            self.pipeline
-                .remove(&child)
-                .map_err(|_| PlayerError::AudioElement("Failed to remove element".into()))?;
-        }
+    //     // 从管道中移除所有元素
+    //     for child in children {
+    //         self.pipeline
+    //             .remove(&child)
+    //             .map_err(|_| PlayerError::AudioElement("Failed to remove element".into()))?;
+    //     }
 
-        tracing::debug!("Pipeline cleaned up");
-        Ok(())
-    }
+    //     tracing::debug!("Pipeline cleaned up");
+    //     Ok(())
+    // }
 
     /// 构建播放器管道
     async fn build_pipeline(&mut self, url: &str, volume: f64) -> PlayerResult<()> {
