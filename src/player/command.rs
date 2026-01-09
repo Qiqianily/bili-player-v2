@@ -11,6 +11,7 @@ pub enum PlayerCommand {
     Next,
     Previous,
     Stop,
+    Resume,
     SetModel(SetModelRequest),
     SetVolume(SetVolumeRequest),
     AddPlaylist(AddPlaylistRequest),

@@ -146,6 +146,10 @@ impl AudioPlayer {
                 let mut playback = self.playback_manager.lock().await;
                 playback.stop().await?;
             }
+            PlayerCommand::Resume => {
+                let playback = self.playback_manager.lock().await;
+                playback.resume().await?;
+            }
             PlayerCommand::Next => {
                 if self.playlist_manager.move_to_next().await?
                     && let Some(music) = self.playlist_manager.get_current_music().await

@@ -4,8 +4,9 @@ use bili_player::{
         AddPlaylistRequest, AddPlaylistResponse, DeletedRequest, DeletedResponse, GetStateRequest,
         GetStateResponse, NextRequest, NextResponse, PauseRequest, PauseResponse, PlayBvidRequest,
         PlayBvidResponse, PlayRequest, PlayResponse, PreviousRequest, PreviousResponse,
-        SeekRequest, SeekResponse, SetModelRequest, SetModelResponse, SetVolumeRequest,
-        SetVolumeResponse, ShowPlayListRequest, ShowPlayListResponse, StopRequest, StopResponse,
+        ResumeRequest, ResumeResponse, SeekRequest, SeekResponse, SetModelRequest,
+        SetModelResponse, SetVolumeRequest, SetVolumeResponse, ShowPlayListRequest,
+        ShowPlayListResponse, StopRequest, StopResponse,
         player_service_server::{PlayerService, PlayerServiceServer},
     },
     player::{
@@ -110,7 +111,20 @@ impl PlayerService for PlayerServer {
             Err(Status::internal("停止播放时失败！"))
         }
     }
-
+    async fn resume(
+        &self,
+        _request: Request<ResumeRequest>,
+    ) -> Result<Response<ResumeResponse>, Status> {
+        if (self.command_sender.send(PlayerCommand::Resume).await).is_ok() {
+            let result = ResumeResponse {
+                success: true,
+                message: "恢复播放".into(),
+            };
+            return Ok(Response::new(result));
+        } else {
+            Err(Status::internal("恢复播放时失败！"))
+        }
+    }
     async fn set_model(
         &self,
         request: Request<SetModelRequest>,
@@ -161,7 +175,6 @@ impl PlayerService for PlayerServer {
             // 等待响应
             match receiver.await {
                 Ok(state) => {
-                    tracing::info!("获取播放器状态成功");
                     let result = GetStateResponse {
                         success: true,
                         message: state.to_string(),

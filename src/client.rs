@@ -1,6 +1,6 @@
 use bili_player::pb::{
     GetStateRequest, NextRequest, PauseRequest, PlayBvidRequest, PlayRequest, PreviousRequest,
-    SetModelRequest, StopRequest, player_service_client::PlayerServiceClient,
+    ResumeRequest, SetModelRequest, StopRequest, player_service_client::PlayerServiceClient,
 };
 use clap::{Parser, Subcommand};
 #[derive(Debug, Parser)]
@@ -21,6 +21,9 @@ enum Commands {
 
     #[command(about = "暂停播放")]
     Pause,
+
+    #[command(about = "恢复播放")]
+    Resume,
 
     #[command(about = "播放下一首歌曲")]
     Next,
@@ -116,6 +119,14 @@ async fn main() -> anyhow::Result<()> {
         Commands::Pause => {
             let request = tonic::Request::new(PauseRequest {});
             let response = client.pause(request).await?.into_inner();
+            if response.success {
+                eprintln!("{}", response.message);
+            };
+        }
+        // 恢复播放
+        Commands::Resume => {
+            let request = tonic::Request::new(ResumeRequest {});
+            let response = client.resume(request).await?.into_inner();
             if response.success {
                 eprintln!("{}", response.message);
             };

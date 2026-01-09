@@ -48,6 +48,12 @@ message StopResponse {
   bool success = 1;
   string message = 2;
 }
+message ResumeRequest {}
+
+message ResumeResponse {
+  bool success = 1;
+  string message = 2;
+}
 message SetModelRequest {
   string model = 1;
 }
@@ -113,6 +119,7 @@ service PlayerService {
   rpc Next(NextRequest) returns (NextResponse);
   rpc Previous(PreviousRequest) returns (PreviousResponse);
   rpc Stop(StopRequest) returns (StopResponse);
+  rpc Resume(ResumeRequest) returns (ResumeResponse);
   rpc SetModel(SetModelRequest) returns (SetModelResponse);
   rpc AddPlaylist(AddPlaylistRequest) returns (AddPlaylistResponse);
   rpc Deleted(DeletedRequest) returns (DeletedResponse);

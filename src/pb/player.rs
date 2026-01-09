@@ -69,6 +69,15 @@ pub struct StopResponse {
     #[prost(string, tag = "2")]
     pub message: ::prost::alloc::string::String,
 }
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ResumeRequest {}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ResumeResponse {
+    #[prost(bool, tag = "1")]
+    pub success: bool,
+    #[prost(string, tag = "2")]
+    pub message: ::prost::alloc::string::String,
+}
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SetModelRequest {
     #[prost(string, tag = "1")]
@@ -377,6 +386,27 @@ pub mod player_service_client {
             req.extensions_mut().insert(GrpcMethod::new("player.PlayerService", "Stop"));
             self.inner.unary(req, path, codec).await
         }
+        pub async fn resume(
+            &mut self,
+            request: impl tonic::IntoRequest<super::ResumeRequest>,
+        ) -> std::result::Result<tonic::Response<super::ResumeResponse>, tonic::Status> {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/player.PlayerService/Resume",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("player.PlayerService", "Resume"));
+            self.inner.unary(req, path, codec).await
+        }
         pub async fn set_model(
             &mut self,
             request: impl tonic::IntoRequest<super::SetModelRequest>,
@@ -586,6 +616,10 @@ pub mod player_service_server {
             &self,
             request: tonic::Request<super::StopRequest>,
         ) -> std::result::Result<tonic::Response<super::StopResponse>, tonic::Status>;
+        async fn resume(
+            &self,
+            request: tonic::Request<super::ResumeRequest>,
+        ) -> std::result::Result<tonic::Response<super::ResumeResponse>, tonic::Status>;
         async fn set_model(
             &self,
             request: tonic::Request<super::SetModelRequest>,
@@ -958,6 +992,51 @@ pub mod player_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = StopSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/player.PlayerService/Resume" => {
+                    #[allow(non_camel_case_types)]
+                    struct ResumeSvc<T: PlayerService>(pub Arc<T>);
+                    impl<
+                        T: PlayerService,
+                    > tonic::server::UnaryService<super::ResumeRequest>
+                    for ResumeSvc<T> {
+                        type Response = super::ResumeResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ResumeRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as PlayerService>::resume(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = ResumeSvc(inner);
                         let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
