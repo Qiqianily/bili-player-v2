@@ -8,8 +8,8 @@ use tokio::{
 use crate::{
     errors::{PlayerError, PlayerResult},
     player::{
-        command::PlayerCommand, music_data::get_music_data, playback::PlaybackManager,
-        playlist::PlaylistManager, volume::VolumeManager,
+        command::PlayerCommand, music_data::get_music_data, play_mode::PlayMode,
+        playback::PlaybackManager, playlist::PlaylistManager, volume::VolumeManager,
     },
 };
 
@@ -80,14 +80,24 @@ impl AudioPlayer {
                     }
                 }, if eos_receiver.is_some() => {
                     println!("[EOS] Playing next track...");
-                    // 触发下一首逻辑（内联，不走 command channel）
-                    if self.playlist_manager.move_to_next().await?
-                        && let Some(music) = self.playlist_manager.get_current_music().await {
+                    let play_mode = self.playlist_manager.get_play_mode().await;
+                    if play_mode == PlayMode::Repeat {
+                        if let Some(music) = self.playlist_manager.get_current_music().await {
                             let client = self.client.clone();
                             let mut playback = self.playback_manager.lock().await;
                             let volume = self.volume_manager.get_gstreamer_volume();
                             playback.play_music(&client, &music, volume).await?;
                         }
+                    } else {
+                        // 触发下一首逻辑（内联，不走 command channel）
+                        if self.playlist_manager.move_to_next().await?
+                            && let Some(music) = self.playlist_manager.get_current_music().await {
+                                let client = self.client.clone();
+                                let mut playback = self.playback_manager.lock().await;
+                                let volume = self.volume_manager.get_gstreamer_volume();
+                                playback.play_music(&client, &music, volume).await?;
+                            }
+                    }
                 }
             }
         }
@@ -135,9 +145,10 @@ impl AudioPlayer {
                 //     self.playback_manager.play().await?;
                 // }
             }
-            PlayerCommand::SetModel(_req) => {
+            PlayerCommand::SetModel(req) => {
                 // 假设 SetModel 是切换播放模式（单曲、列表、随机等）
-                // self.playlist_manager.set_mode(req.mode).await;
+                let mode = PlayMode::from_string(req.model.as_str()).unwrap();
+                self.playlist_manager.set_play_mode(mode).await;
             }
             PlayerCommand::SetVolume(_req) => {
                 // self.volume_manager.set_volume(req.volume).await?;

@@ -90,7 +90,7 @@ impl PlaylistManager {
         match play_mode {
             // // 如果是单曲播放模式
             // PlayMode::Repeat => Ok(true),
-            // 如果是随机播放模式，随机选择一首
+            // 如果是随机播放模/式，随机选择一首
             PlayMode::Shuffle => {
                 let shuffle_order = self.shuffle_order.lock().await;
                 if let Some(order) = shuffle_order.as_ref()

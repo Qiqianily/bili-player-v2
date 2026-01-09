@@ -71,6 +71,8 @@ struct ModeCommand {
     shuffle_mode: bool,
     #[arg(short = 'r', long = "repeat", action = clap::ArgAction::SetTrue, help = "设置播放模式为单曲循环")]
     repeat_mode: bool,
+    #[arg(short = 'a', long = "repeatall", action = clap::ArgAction::SetTrue, help = "设置播放模式为列表循环播放")]
+    repeatall_mode: bool,
 }
 #[derive(Debug, Parser)]
 struct FindCommand {
@@ -144,6 +146,8 @@ async fn main() -> anyhow::Result<()> {
                 "shuffle".into() // 随机播放
             } else if mode_cmd.repeat_mode {
                 "repeat".into() // 单曲循环播放
+            } else if mode_cmd.repeatall_mode {
+                "repeatall".into() // 列表循环播放
             } else {
                 "normal".into() // 列表播放
             };
