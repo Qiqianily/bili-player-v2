@@ -230,6 +230,7 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     });
+    // 如果要启动就播放，需要发送 PlayerCommand::Play 信号
     // command_sender.send(PlayerCommand::Play).await?;
     // grpc 服务地址
     let addr = "[::1]:50052".parse().unwrap();

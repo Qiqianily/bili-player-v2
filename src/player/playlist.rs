@@ -5,6 +5,7 @@ use tokio::sync::{Mutex, RwLock};
 
 use crate::{
     errors::{PlayerError, PlayerResult},
+    fetch::network::fetch_video_data,
     player::{model::MusicInfo, play_mode::PlayMode},
 };
 
@@ -29,13 +30,63 @@ impl PlaylistManager {
             shuffle_order: Mutex::new(None),
         }
     }
+    /// 检查音乐是否在播放列表中
+    pub async fn is_in_playlist(&self, bvid: &str) -> bool {
+        self.playlist
+            .lock()
+            .await
+            .iter()
+            .any(|music| music.bvid == bvid)
+    }
+    /// 获取音乐信息
+    pub async fn fetch_music_info(&self, bvid: &str) -> PlayerResult<MusicInfo> {
+        // 实现获取音乐信息的逻辑
+        let client = reqwest::Client::new();
+        let video_data = fetch_video_data(&client, bvid).await?;
+        let music_info = MusicInfo {
+            bvid: video_data.bvid,
+            cid: video_data.cid.to_string(),
+            title: video_data.title,
+            artist: None,
+            owner: video_data.owner.name,
+            duration: 0,
+        };
+        Ok(music_info)
+    }
     /// 获取播放列表长度
     pub async fn get_playlist_len(&self) -> usize {
         self.playlist.lock().await.len()
     }
+    /// 获取音乐索引
+    pub async fn get_music_index(&self, bvid: &str) -> Option<usize> {
+        self.playlist
+            .lock()
+            .await
+            .iter()
+            .position(|music| music.bvid == bvid)
+    }
     /// 获取当前音乐索引
     pub async fn get_current_index(&self) -> Option<usize> {
         *self.current_index.lock().await
+    }
+    pub async fn add_will_play_music_into_playlist(&self, bvid: &str) -> PlayerResult<()> {
+        let music_info = self.fetch_music_info(bvid).await?;
+        {
+            let mut playlist = self.playlist.lock().await;
+            playlist.push_back(music_info);
+            playlist.len()
+        }; // 🔓 playlist 锁在这里释放
+        // 获取这个音乐在列表中的索引
+        let music_index = self.get_music_index(bvid).await.unwrap_or(0);
+        // 如果当前没有选中的音乐，选择第一个
+        {
+            let mut current_index = self.current_index.lock().await;
+            *current_index = Some(music_index);
+        } // 🔓 current_index 锁释放
+
+        // 重置随机播放顺序
+        self.update_shuffle_order().await;
+        Ok(())
     }
     /// 添加音乐到播放列表
     pub async fn add_music(&self, music: MusicInfo) {

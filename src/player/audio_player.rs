@@ -131,12 +131,19 @@ impl AudioPlayer {
                     playback.play_music(&client, &music, volume).await?;
                 }
             }
-            PlayerCommand::PlayBvid(_req) => {
-                // 1. 解析 BVID -> 获取音频 URL（调用 Bilibili API？）
-                // 2. 加载到播放器
-                // let uri = self.resolve_bvid_to_uri(&req.bvid).await?;
-                // self.playback_manager.load_uri(&uri).await?;
-                // self.playback_manager.play().await?;
+            PlayerCommand::PlayBvid(req) => {
+                if (self
+                    .playlist_manager
+                    .add_will_play_music_into_playlist(&req.bvid)
+                    .await)
+                    .is_ok()
+                    && let Some(music) = self.playlist_manager.get_current_music().await
+                {
+                    let client = self.client.clone();
+                    let mut playback = self.playback_manager.lock().await;
+                    let volume = self.volume_manager.get_gstreamer_volume();
+                    playback.play_music(&client, &music, volume).await?;
+                }
             }
             PlayerCommand::Pause => {
                 let playback = self.playback_manager.lock().await;

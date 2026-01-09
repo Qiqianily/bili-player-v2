@@ -21,6 +21,9 @@ pub enum PlayerError {
     #[error("Playlist error: {0}")]
     Playlist(String),
 
+    #[error("Set playlist index error: {0} out of range")]
+    InvalidIndex(String),
+
     #[error("Volume out of range: {0}")]
     VolumeRange(String),
 
