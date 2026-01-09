@@ -8,9 +8,11 @@ use bili_player::{
         SetVolumeResponse, ShowPlayListRequest, ShowPlayListResponse, StopRequest, StopResponse,
         player_service_server::{PlayerService, PlayerServiceServer},
     },
-    player::{audio_player::AudioPlayer, command::PlayerCommand, play_mode::PlayMode},
+    player::{
+        audio_player::AudioPlayer, command::PlayerCommand, play_mode::PlayMode, state::PlayerState,
+    },
 };
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tonic::{Request, Response, Status, transport::Server};
 
 /// 创建一个结构体，用来实现 rpc 中的 server
@@ -86,12 +88,15 @@ impl PlayerService for PlayerServer {
         &self,
         _request: Request<PreviousRequest>,
     ) -> Result<Response<PreviousResponse>, Status> {
-        let _ = self.command_sender.send(PlayerCommand::Previous).await;
-        let result = PreviousResponse {
-            success: true,
-            message: "播放上一首歌曲".into(),
-        };
-        Ok(Response::new(result))
+        if (self.command_sender.send(PlayerCommand::Previous).await).is_ok() {
+            let result = PreviousResponse {
+                success: true,
+                message: "成功切换到上一首歌曲".into(),
+            };
+            return Ok(Response::new(result));
+        } else {
+            Err(Status::internal("切换上一首歌曲时失败！"))
+        }
     }
 
     async fn stop(&self, _request: Request<StopRequest>) -> Result<Response<StopResponse>, Status> {
@@ -144,7 +149,30 @@ impl PlayerService for PlayerServer {
         &self,
         _request: Request<GetStateRequest>,
     ) -> Result<Response<GetStateResponse>, Status> {
-        todo!()
+        // 创建一个 oneshot channel
+        let (sender, receiver) = oneshot::channel::<PlayerState>();
+        // 发送消息到播放器
+        if (self
+            .command_sender
+            .send(PlayerCommand::GetState(sender))
+            .await)
+            .is_ok()
+        {
+            // 等待响应
+            match receiver.await {
+                Ok(state) => {
+                    tracing::info!("获取播放器状态成功");
+                    let result = GetStateResponse {
+                        success: true,
+                        message: state.to_string(),
+                    };
+                    return Ok(Response::new(result));
+                }
+                Err(_) => Err(Status::internal("获取播放器状态失败")),
+            }
+        } else {
+            Err(Status::internal("获取播放器状态失败"))
+        }
     }
     async fn show_play_list(
         &self,

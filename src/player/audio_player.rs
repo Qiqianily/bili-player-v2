@@ -9,7 +9,8 @@ use crate::{
     errors::{PlayerError, PlayerResult},
     player::{
         command::PlayerCommand, music_data::get_music_data, play_mode::PlayMode,
-        playback::PlaybackManager, playlist::PlaylistManager, volume::VolumeManager,
+        playback::PlaybackManager, playlist::PlaylistManager, state::PlayerState,
+        volume::VolumeManager,
     },
 };
 
@@ -57,6 +58,22 @@ impl AudioPlayer {
         // // 启动后台任务
         // player.start_background_tasks(command_receiver).await?;
         Ok((player, cmd_sender))
+    }
+    /// 获取当前播放器状态
+    pub async fn get_current_state(&self) -> PlayerState {
+        let playback_manager = self.playback_manager.lock().await;
+        let volume_manager = self.volume_manager.clone();
+        let playlist_manager = self.playlist_manager.clone();
+        PlayerState {
+            playback_state: playback_manager.get_playback_state().await,
+            current_position: playback_manager.get_current_position().await,
+            duration: playback_manager.get_duration().await,
+            volume: volume_manager.get_volume_percentage(),
+            current_music: playlist_manager.get_current_music().await,
+            play_mode: playlist_manager.get_play_mode().await,
+            playlist_length: playlist_manager.get_playlist_len().await,
+            current_index: playlist_manager.get_current_index().await,
+        }
     }
     /// 运行播放器
     pub async fn run(&mut self) -> PlayerResult<()> {
@@ -140,10 +157,14 @@ impl AudioPlayer {
                 }
             }
             PlayerCommand::Previous => {
-                // if let Some(music) = self.playlist_manager.get_previous().await {
-                //     self.playback_manager.load_uri(&music.uri).await?;
-                //     self.playback_manager.play().await?;
-                // }
+                if self.playlist_manager.move_to_previous().await?
+                    && let Some(music) = self.playlist_manager.get_current_music().await
+                {
+                    let client = self.client.clone();
+                    let mut playback = self.playback_manager.lock().await;
+                    let volume = self.volume_manager.get_gstreamer_volume();
+                    playback.play_music(&client, &music, volume).await?;
+                }
             }
             PlayerCommand::SetModel(req) => {
                 // 假设 SetModel 是切换播放模式（单曲、列表、随机等）
@@ -161,9 +182,9 @@ impl AudioPlayer {
             PlayerCommand::Delete(_req) => {
                 // self.playlist_manager.remove_by_id(&req.id).await;
             }
-            PlayerCommand::GetState(_sender) => {
-                // let state = self.get_current_state().await;
-                // let _ = sender.send(state); // 忽略发送失败（调用方可能已 drop）
+            PlayerCommand::GetState(sender) => {
+                let state = self.get_current_state().await;
+                let _ = sender.send(state); // 忽略发送失败（调用方可能已 drop）
             }
             PlayerCommand::ShowPlaylist() => {
                 // 可能用于调试，或触发状态更新

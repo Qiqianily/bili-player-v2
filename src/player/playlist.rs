@@ -29,6 +29,14 @@ impl PlaylistManager {
             shuffle_order: Mutex::new(None),
         }
     }
+    /// 获取播放列表长度
+    pub async fn get_playlist_len(&self) -> usize {
+        self.playlist.lock().await.len()
+    }
+    /// 获取当前音乐索引
+    pub async fn get_current_index(&self) -> Option<usize> {
+        *self.current_index.lock().await
+    }
     /// 添加音乐到播放列表
     pub async fn add_music(&self, music: MusicInfo) {
         let new_len = {

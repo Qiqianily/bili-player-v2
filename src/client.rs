@@ -1,6 +1,6 @@
 use bili_player::pb::{
-    NextRequest, PauseRequest, PlayBvidRequest, PlayRequest, PreviousRequest, SetModelRequest,
-    StopRequest, player_service_client::PlayerServiceClient,
+    GetStateRequest, NextRequest, PauseRequest, PlayBvidRequest, PlayRequest, PreviousRequest,
+    SetModelRequest, StopRequest, player_service_client::PlayerServiceClient,
 };
 use clap::{Parser, Subcommand};
 #[derive(Debug, Parser)]
@@ -36,6 +36,9 @@ enum Commands {
 
     #[command(about = "添加歌曲到播放列表")]
     Add(AddCommand),
+
+    #[command(about = "获取播放器状态")]
+    State,
 
     #[command(about = "在播放列表中查找歌曲")]
     Find(FindCommand),
@@ -159,6 +162,13 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Add(_add_cmd) => {}
         Commands::Delete(_delete_cmd) => {}
+        Commands::State => {
+            let request = tonic::Request::new(GetStateRequest {});
+            let response = client.get_state(request).await?.into_inner();
+            if response.success {
+                eprintln!("{}", response.message);
+            };
+        }
         Commands::Find(_find_cmd) => {}
         Commands::Playlist => {}
     }

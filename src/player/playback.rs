@@ -40,6 +40,17 @@ impl PlaybackState {
             Self::Stopped => "停止播放状态".into(),
         }
     }
+    pub fn show_info(&self) -> String {
+        match self {
+            Self::Idle => "初始待定".into(),
+            Self::Ready => "准备就绪".into(),
+            Self::Playing => "正在播放".into(),
+            Self::Paused => "暂停播放".into(),
+            Self::Ended => "播放结束".into(),
+            Self::Error => "播放错误".into(),
+            Self::Stopped => "停止播放".into(),
+        }
+    }
 }
 pub struct PlaybackManager {
     pub pipeline: gstreamer::Pipeline,             // 播放通道
@@ -267,6 +278,11 @@ impl PlaybackManager {
             tracing::info!("Playback state set to: Stopped");
         }
         Ok(())
+    }
+    /// 获取当前播放状态
+    pub async fn get_playback_state(&self) -> PlaybackState {
+        let state = self.playback_state.lock().await;
+        *state
     }
     /// 获取当前播放位置
     pub async fn get_current_position(&self) -> Option<gstreamer::ClockTime> {
