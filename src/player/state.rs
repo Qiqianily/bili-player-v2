@@ -20,28 +20,53 @@ impl std::fmt::Display for PlayerState {
             .current_music
             .as_ref()
             .map(|music| music.title.clone())
-            .unwrap_or("None".to_string());
-        let music_info = self
+            .unwrap_or_else(|| "None".to_string());
+        let music_bvid = self
             .current_music
             .as_ref()
-            .map(|music| music.to_string())
-            .unwrap_or("None".to_string());
+            .map(|music| music.bvid.clone())
+            .unwrap_or_else(|| "None".to_string());
+        let music_cid = self
+            .current_music
+            .as_ref()
+            .map(|music| music.cid.clone())
+            .unwrap_or_else(|| "None".to_string());
+        let music_artist = self
+            .current_music
+            .as_ref()
+            .and_then(|music| music.artist.clone()) // 如果 artist 是 Some，克隆出 String；否则 None
+            .unwrap_or_else(|| "Unknown".to_string());
+        let music_upper = self
+            .current_music
+            .as_ref()
+            .map(|music| music.owner.clone())
+            .unwrap_or_else(|| "None".to_string());
         let current_index = match self.current_index {
             Some(idx) => idx + 1,
             None => 0,
         };
+        let duration = format_clock_time(self.duration);
+        let music_info = format!(
+            "《{}》({}) bvid: {} cid: {} 演唱: {} 上传者: {}",
+            music_title, duration, music_bvid, music_cid, music_artist, music_upper
+        );
+        let music_info_show = format!(
+            "《{}》-{}-{}-{}-{}-{}",
+            music_title, duration, music_bvid, music_cid, music_artist, music_upper
+        );
         write!(
             f,
-            "{}:《{}》时长:{}/{}, 音量:{}, 播放模式:{}, 第{}个/共{}个。\n当前播放:{}",
+            "{}:《{}》时长:{}/{}, 音量:{}, 播放模式:{}, 第{}个/共{}个。\n当前播放:{}\n保存：{}",
             self.playback_state.show_info(),
             music_title,
             format_clock_time(self.current_position),
-            format_clock_time(self.duration),
+            duration,
             self.volume,
             self.play_mode.get_string(),
             current_index,
             self.playlist_length,
-            music_info
+            music_info,
+            music_info_show
         )
     }
 }
