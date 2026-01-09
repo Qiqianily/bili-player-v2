@@ -141,10 +141,10 @@ pub struct ShowPlayListResponse {
     #[prost(string, repeated, tag = "4")]
     pub infos: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SetVolumeRequest {
-    #[prost(double, tag = "1")]
-    pub volume: f64,
+    #[prost(uint32, tag = "1")]
+    pub volume: u32,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SetVolumeResponse {

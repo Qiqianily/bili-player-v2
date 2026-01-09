@@ -95,7 +95,7 @@ message ShowPlayListResponse {
   repeated string infos = 4;
 }
 message SetVolumeRequest {
-  double volume = 1;
+  uint32 volume = 1;
 }
 
 message SetVolumeResponse {

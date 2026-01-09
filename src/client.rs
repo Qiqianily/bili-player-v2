@@ -1,6 +1,7 @@
 use bili_player::pb::{
     GetStateRequest, NextRequest, PauseRequest, PlayBvidRequest, PlayRequest, PreviousRequest,
-    ResumeRequest, SetModelRequest, StopRequest, player_service_client::PlayerServiceClient,
+    ResumeRequest, SetModelRequest, SetVolumeRequest, StopRequest,
+    player_service_client::PlayerServiceClient,
 };
 use clap::{Parser, Subcommand};
 #[derive(Debug, Parser)]
@@ -37,6 +38,9 @@ enum Commands {
     #[command(about = "设置播放模式")]
     Mode(ModeCommand),
 
+    #[command(about = "设置音量")]
+    Volume(VolumeCommand),
+
     #[command(about = "添加歌曲到播放列表")]
     Add(AddCommand),
 
@@ -57,6 +61,12 @@ enum Commands {
 struct PlayCommand {
     #[arg(short = 'b', long = "bvid", help = "要播放的 bvid")]
     bvid: Option<String>,
+}
+
+#[derive(Debug, Parser)]
+struct VolumeCommand {
+    #[arg(short = 'v', long = "volume", help = "要设置的音量")]
+    volume: u32,
 }
 
 #[derive(Debug, Parser)]
@@ -167,6 +177,15 @@ async fn main() -> anyhow::Result<()> {
             };
             let request = tonic::Request::new(SetModelRequest { model });
             let response = client.set_model(request).await?.into_inner();
+            if response.success {
+                eprintln!("{}", response.message);
+            };
+        }
+        Commands::Volume(volume_cmd) => {
+            let request = tonic::Request::new(SetVolumeRequest {
+                volume: volume_cmd.volume,
+            });
+            let response = client.set_volume(request).await?.into_inner();
             if response.success {
                 eprintln!("{}", response.message);
             };

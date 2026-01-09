@@ -195,9 +195,23 @@ impl PlayerService for PlayerServer {
     }
     async fn set_volume(
         &self,
-        _request: Request<SetVolumeRequest>,
+        request: Request<SetVolumeRequest>,
     ) -> Result<Response<SetVolumeResponse>, Status> {
-        todo!()
+        let input = request.into_inner();
+        if (self
+            .command_sender
+            .send(PlayerCommand::SetVolume(input))
+            .await)
+            .is_ok()
+        {
+            let result = SetVolumeResponse {
+                success: true,
+                message: "音量设置成功".into(),
+            };
+            return Ok(Response::new(result));
+        } else {
+            Err(Status::internal("设置音量时失败！"))
+        }
     }
     async fn seek(&self, _request: Request<SeekRequest>) -> Result<Response<SeekResponse>, Status> {
         todo!()

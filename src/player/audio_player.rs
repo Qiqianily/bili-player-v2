@@ -175,8 +175,10 @@ impl AudioPlayer {
                 let mode = PlayMode::from_string(req.model.as_str()).unwrap();
                 self.playlist_manager.set_play_mode(mode).await;
             }
-            PlayerCommand::SetVolume(_req) => {
-                // self.volume_manager.set_volume(req.volume).await?;
+            PlayerCommand::SetVolume(req) => {
+                let playback = self.playback_manager.lock().await;
+                let pipeline = playback.get_pipeline().clone();
+                self.volume_manager.set_volume(&pipeline, req.volume)?;
             }
             PlayerCommand::AddPlaylist(_req) => {
                 // for music in req.musics {
