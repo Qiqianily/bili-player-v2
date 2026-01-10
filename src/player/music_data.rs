@@ -1,3 +1,8 @@
+use std::{
+    fs::File,
+    io::{BufRead, BufReader},
+};
+
 use crate::player::model::MusicInfo;
 pub fn get_music_data() -> Vec<MusicInfo> {
     let music_info1 = MusicInfo {
@@ -35,6 +40,49 @@ pub fn get_music_data() -> Vec<MusicInfo> {
     vec![music_info1, music_info2, music_info3, music_info4]
 }
 // 《天高地厚》-05:01-BV1b14y1Z7Uh-1116042344-信乐团-知己音乐
+/// 从文件中读取音乐信息
+pub fn read_music_data(file: &str) -> Vec<MusicInfo> {
+    let mut music_data = Vec::new();
+    if let Ok(file) = File::open(file) {
+        let reader = BufReader::new(file);
+        for line in reader.lines().map_while(Result::ok) {
+            let parts: Vec<&str> = line.split('-').collect();
+            if parts.len() == 6 {
+                let title = parts[0]
+                    .replace("《", "")
+                    .replace("》", "")
+                    .trim()
+                    .to_string();
+                let duration = get_duration_from_str(parts[1].trim()) as u64;
+                let bvid = parts[2].trim().to_string();
+                let cid = parts[3].trim().to_string();
+                let artist = parts[4].trim().to_string();
+                let owner = parts[5].trim().to_string();
+                let music_info = MusicInfo {
+                    bvid,
+                    cid,
+                    title,
+                    artist: Some(artist),
+                    duration,
+                    owner,
+                };
+                music_data.push(music_info);
+            }
+        }
+    }
+    music_data
+}
+
+fn get_duration_from_str(duration_str: &str) -> u32 {
+    let parts: Vec<&str> = duration_str.split(':').collect();
+    if parts.len() == 2 {
+        let minutes = parts[0].parse::<u32>().unwrap_or(0);
+        let seconds = parts[1].parse::<u32>().unwrap_or(0);
+        minutes * 60 + seconds
+    } else {
+        0
+    }
+}
 
 // /// 播放音频
 // pub async fn play_music(
