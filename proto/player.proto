@@ -84,14 +84,14 @@ message GetStateResponse {
   bool success = 1;
   string message = 2;
 }
-message ShowPlayListRequest {
-  int32 page = 1;
+message ShowMusicPageInfoRequest {
+  uint32 page = 1;
 }
 
-message ShowPlayListResponse {
+message ShowMusicPageInfoResponse {
   bool success = 1;
-  int32 total = 2;
-  int32 current = 3;
+  uint32 total = 2;
+  uint32 current = 3;
   repeated string infos = 4;
 }
 message SetVolumeRequest {
@@ -124,7 +124,7 @@ service PlayerService {
   rpc AddPlaylist(AddPlaylistRequest) returns (AddPlaylistResponse);
   rpc Deleted(DeletedRequest) returns (DeletedResponse);
   rpc GetState(GetStateRequest) returns (GetStateResponse);
-  rpc ShowPlayList(ShowPlayListRequest) returns (ShowPlayListResponse);
+  rpc ShowMusicPageInfo(ShowMusicPageInfoRequest) returns (ShowMusicPageInfoResponse);
   rpc SetVolume(SetVolumeRequest) returns (SetVolumeResponse);
   rpc Seek(SeekRequest) returns (SeekResponse);
 }

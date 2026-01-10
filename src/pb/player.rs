@@ -126,18 +126,18 @@ pub struct GetStateResponse {
     pub message: ::prost::alloc::string::String,
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct ShowPlayListRequest {
-    #[prost(int32, tag = "1")]
-    pub page: i32,
+pub struct ShowMusicPageInfoRequest {
+    #[prost(uint32, tag = "1")]
+    pub page: u32,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct ShowPlayListResponse {
+pub struct ShowMusicPageInfoResponse {
     #[prost(bool, tag = "1")]
     pub success: bool,
-    #[prost(int32, tag = "2")]
-    pub total: i32,
-    #[prost(int32, tag = "3")]
-    pub current: i32,
+    #[prost(uint32, tag = "2")]
+    pub total: u32,
+    #[prost(uint32, tag = "3")]
+    pub current: u32,
     #[prost(string, repeated, tag = "4")]
     pub infos: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
@@ -503,11 +503,11 @@ pub mod player_service_client {
                 .insert(GrpcMethod::new("player.PlayerService", "GetState"));
             self.inner.unary(req, path, codec).await
         }
-        pub async fn show_play_list(
+        pub async fn show_music_page_info(
             &mut self,
-            request: impl tonic::IntoRequest<super::ShowPlayListRequest>,
+            request: impl tonic::IntoRequest<super::ShowMusicPageInfoRequest>,
         ) -> std::result::Result<
-            tonic::Response<super::ShowPlayListResponse>,
+            tonic::Response<super::ShowMusicPageInfoResponse>,
             tonic::Status,
         > {
             self.inner
@@ -520,11 +520,11 @@ pub mod player_service_client {
                 })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/player.PlayerService/ShowPlayList",
+                "/player.PlayerService/ShowMusicPageInfo",
             );
             let mut req = request.into_request();
             req.extensions_mut()
-                .insert(GrpcMethod::new("player.PlayerService", "ShowPlayList"));
+                .insert(GrpcMethod::new("player.PlayerService", "ShowMusicPageInfo"));
             self.inner.unary(req, path, codec).await
         }
         pub async fn set_volume(
@@ -645,11 +645,11 @@ pub mod player_service_server {
             tonic::Response<super::GetStateResponse>,
             tonic::Status,
         >;
-        async fn show_play_list(
+        async fn show_music_page_info(
             &self,
-            request: tonic::Request<super::ShowPlayListRequest>,
+            request: tonic::Request<super::ShowMusicPageInfoRequest>,
         ) -> std::result::Result<
-            tonic::Response<super::ShowPlayListResponse>,
+            tonic::Response<super::ShowMusicPageInfoResponse>,
             tonic::Status,
         >;
         async fn set_volume(
@@ -1232,25 +1232,26 @@ pub mod player_service_server {
                     };
                     Box::pin(fut)
                 }
-                "/player.PlayerService/ShowPlayList" => {
+                "/player.PlayerService/ShowMusicPageInfo" => {
                     #[allow(non_camel_case_types)]
-                    struct ShowPlayListSvc<T: PlayerService>(pub Arc<T>);
+                    struct ShowMusicPageInfoSvc<T: PlayerService>(pub Arc<T>);
                     impl<
                         T: PlayerService,
-                    > tonic::server::UnaryService<super::ShowPlayListRequest>
-                    for ShowPlayListSvc<T> {
-                        type Response = super::ShowPlayListResponse;
+                    > tonic::server::UnaryService<super::ShowMusicPageInfoRequest>
+                    for ShowMusicPageInfoSvc<T> {
+                        type Response = super::ShowMusicPageInfoResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<super::ShowPlayListRequest>,
+                            request: tonic::Request<super::ShowMusicPageInfoRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as PlayerService>::show_play_list(&inner, request).await
+                                <T as PlayerService>::show_music_page_info(&inner, request)
+                                    .await
                             };
                             Box::pin(fut)
                         }
@@ -1261,7 +1262,7 @@ pub mod player_service_server {
                     let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
-                        let method = ShowPlayListSvc(inner);
+                        let method = ShowMusicPageInfoSvc(inner);
                         let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

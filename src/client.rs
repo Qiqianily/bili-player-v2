@@ -1,6 +1,6 @@
 use bili_player::pb::{
     GetStateRequest, NextRequest, PauseRequest, PlayBvidRequest, PlayRequest, PreviousRequest,
-    ResumeRequest, SetModelRequest, SetVolumeRequest, StopRequest,
+    ResumeRequest, SetModelRequest, SetVolumeRequest, ShowMusicPageInfoRequest, StopRequest,
     player_service_client::PlayerServiceClient,
 };
 use clap::{Parser, Subcommand};
@@ -54,7 +54,13 @@ enum Commands {
     Delete(DeleteCommand),
 
     #[command(about = "显示播放列表")]
-    Playlist,
+    Page(PageCommand),
+}
+
+#[derive(Debug, Parser)]
+struct PageCommand {
+    #[arg(short = 'p', long = "page", help = "要显示的页面")]
+    page: u32,
 }
 
 #[derive(Debug, Parser)]
@@ -200,7 +206,19 @@ async fn main() -> anyhow::Result<()> {
             };
         }
         Commands::Find(_find_cmd) => {}
-        Commands::Playlist => {}
+        Commands::Page(page_cmd) => {
+            let request = tonic::Request::new(ShowMusicPageInfoRequest {
+                page: page_cmd.page,
+            });
+            let response = client.show_music_page_info(request).await?.into_inner();
+            if response.success {
+                eprintln!(
+                    "{}\n{:^60}",
+                    response.infos.join("\n"),
+                    format!("当前显示第{}页/共{}页", response.current, response.total)
+                );
+            };
+        }
     }
     Ok(())
 }

@@ -7,6 +7,7 @@ use tokio::{
 
 use crate::{
     errors::{PlayerError, PlayerResult},
+    pb::ShowMusicPageInfoResponse,
     player::{
         command::PlayerCommand, music_data::read_music_data, play_mode::PlayMode,
         playback::PlaybackManager, playlist::PlaylistManager, state::PlayerState,
@@ -200,9 +201,31 @@ impl AudioPlayer {
                 let state = self.get_current_state().await;
                 let _ = sender.send(state); // 忽略发送失败（调用方可能已 drop）
             }
-            PlayerCommand::ShowPlaylist() => {
-                // 可能用于调试，或触发状态更新
-                // self.log_playlist().await;
+            PlayerCommand::ShowMusicPageInfo { page, sender } => {
+                // 起始
+                let start = ((page - 1) * 10) as usize;
+                let playlist = self.playlist_manager.clone();
+                // 获取音乐数量
+                let music_len = playlist.get_playlist_len().await;
+                // 计算一共多少页
+                let all_pages = music_len.div_ceil(10);
+                // 结束
+                let end = (start + 10).min(music_len);
+                // 获取音乐信息
+                let music_vec = playlist.get_playlist_info(start, end).await;
+                // 构造返回的音乐页面信息
+                let mut result_info = Vec::new();
+                for (i, music) in music_vec.iter().enumerate() {
+                    result_info.push(format!("[{}] {}", i + start + 1, music));
+                }
+                // 构造返回的音乐页面信息
+                let music_page_info = ShowMusicPageInfoResponse {
+                    success: true,
+                    total: all_pages as u32,
+                    current: page,
+                    infos: result_info,
+                };
+                let _ = sender.send(music_page_info); // 忽略发送失败（调用方可能已 drop）
             }
             PlayerCommand::Seek(_position_micros) => {
                 // let duration = std::time::Duration::from_micros(position_micros);

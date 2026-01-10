@@ -1,5 +1,8 @@
 use crate::{
-    pb::{AddPlaylistRequest, DeletedRequest, PlayBvidRequest, SetModelRequest, SetVolumeRequest},
+    pb::{
+        AddPlaylistRequest, DeletedRequest, PlayBvidRequest, SetModelRequest, SetVolumeRequest,
+        ShowMusicPageInfoResponse,
+    },
     player::state::PlayerState,
 };
 
@@ -17,6 +20,9 @@ pub enum PlayerCommand {
     AddPlaylist(AddPlaylistRequest),
     Delete(DeletedRequest),
     GetState(tokio::sync::oneshot::Sender<PlayerState>),
-    ShowPlaylist(),
+    ShowMusicPageInfo {
+        page: u32,
+        sender: tokio::sync::oneshot::Sender<ShowMusicPageInfoResponse>,
+    },
     Seek(u64),
 }

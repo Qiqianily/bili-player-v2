@@ -57,6 +57,23 @@ impl PlaylistManager {
     pub async fn get_playlist_len(&self) -> usize {
         self.playlist.lock().await.len()
     }
+    pub async fn get_playlist_info(&self, start: usize, end: usize) -> Vec<MusicInfo> {
+        let playlist = self.playlist.lock().await;
+
+        // 确保 start <= end，并且不超过长度
+        if start >= playlist.len() || start > end {
+            return Vec::new();
+        }
+
+        let take_count = (end - start).min(playlist.len() - start);
+
+        playlist
+            .iter()
+            .skip(start)
+            .take(take_count)
+            .cloned() // 因为 iter() 返回 &T，需要 clone 成 T
+            .collect()
+    }
     /// 获取音乐索引
     pub async fn get_music_index(&self, bvid: &str) -> Option<usize> {
         self.playlist
@@ -70,6 +87,16 @@ impl PlaylistManager {
         *self.current_index.lock().await
     }
     pub async fn add_will_play_music_into_playlist(&self, bvid: &str) -> PlayerResult<()> {
+        if self.is_in_playlist(bvid).await {
+            // 获取这个音乐在列表中的索引
+            let music_index = self.get_music_index(bvid).await.unwrap_or(0);
+            // 设置当前播放为这个音乐
+            {
+                let mut current_index = self.current_index.lock().await;
+                *current_index = Some(music_index);
+            } // 🔓 current_index 锁释放
+            return Ok(());
+        }
         let music_info = self.fetch_music_info(bvid).await?;
         {
             let mut playlist = self.playlist.lock().await;
@@ -78,7 +105,7 @@ impl PlaylistManager {
         }; // 🔓 playlist 锁在这里释放
         // 获取这个音乐在列表中的索引
         let music_index = self.get_music_index(bvid).await.unwrap_or(0);
-        // 如果当前没有选中的音乐，选择第一个
+        // 设置当前播放为这个音乐
         {
             let mut current_index = self.current_index.lock().await;
             *current_index = Some(music_index);

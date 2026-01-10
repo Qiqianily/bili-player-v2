@@ -5,8 +5,8 @@ use bili_player::{
         GetStateResponse, NextRequest, NextResponse, PauseRequest, PauseResponse, PlayBvidRequest,
         PlayBvidResponse, PlayRequest, PlayResponse, PreviousRequest, PreviousResponse,
         ResumeRequest, ResumeResponse, SeekRequest, SeekResponse, SetModelRequest,
-        SetModelResponse, SetVolumeRequest, SetVolumeResponse, ShowPlayListRequest,
-        ShowPlayListResponse, StopRequest, StopResponse,
+        SetModelResponse, SetVolumeRequest, SetVolumeResponse, ShowMusicPageInfoRequest,
+        ShowMusicPageInfoResponse, StopRequest, StopResponse,
         player_service_server::{PlayerService, PlayerServiceServer},
     },
     player::{
@@ -187,11 +187,30 @@ impl PlayerService for PlayerServer {
             Err(Status::internal("获取播放器状态失败"))
         }
     }
-    async fn show_play_list(
+    async fn show_music_page_info(
         &self,
-        _request: Request<ShowPlayListRequest>,
-    ) -> Result<Response<ShowPlayListResponse>, Status> {
-        todo!()
+        request: Request<ShowMusicPageInfoRequest>,
+    ) -> Result<Response<ShowMusicPageInfoResponse>, Status> {
+        let page = request.into_inner().page;
+        // 创建一个 oneshot channel
+        let (sender, receiver) = oneshot::channel::<ShowMusicPageInfoResponse>();
+        // 发送消息到播放器
+        if (self
+            .command_sender
+            .send(PlayerCommand::ShowMusicPageInfo { page, sender })
+            .await)
+            .is_ok()
+        {
+            // 等待响应
+            match receiver.await {
+                Ok(state) => {
+                    return Ok(Response::new(state));
+                }
+                Err(_) => Err(Status::internal("获取当前页的音乐信息失败!")),
+            }
+        } else {
+            Err(Status::internal("获取播放器状态失败"))
+        }
     }
     async fn set_volume(
         &self,
