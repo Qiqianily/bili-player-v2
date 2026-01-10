@@ -8,7 +8,7 @@ use tokio::{
 use crate::{
     errors::{PlayerError, PlayerResult},
     player::{
-        command::PlayerCommand, music_data::get_music_data, play_mode::PlayMode,
+        command::PlayerCommand, music_data::read_music_data, play_mode::PlayMode,
         playback::PlaybackManager, playlist::PlaylistManager, state::PlayerState,
         volume::VolumeManager,
     },
@@ -24,14 +24,15 @@ pub struct AudioPlayer {
 }
 // pub state_sender: broadcast::Sender<PlayerState>, // 状态发送器
 impl AudioPlayer {
-    pub async fn new() -> PlayerResult<(Self, mpsc::Sender<PlayerCommand>)> {
+    pub async fn new(file: &str) -> PlayerResult<(Self, mpsc::Sender<PlayerCommand>)> {
         // 1. 初始化 GStreamer 和 Pipeline
         gstreamer::init().map_err(|e| PlayerError::GstInit(e.to_string()))?;
         let pipeline = gstreamer::Pipeline::new();
 
         // 2. 初始化播放列表
         let playlist_manager = Arc::new(PlaylistManager::new());
-        let music_data = get_music_data();
+        let music_data = read_music_data(file);
+        // let music_data = get_music_data();
         for music in music_data {
             playlist_manager.add_music(music).await;
         }

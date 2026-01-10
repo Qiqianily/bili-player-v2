@@ -6,7 +6,8 @@ use bili_player::{
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     init_logger("info").await?;
-    let (mut player, sender) = AudioPlayer::new().await?;
+    let file = "musics.txt";
+    let (mut player, sender) = AudioPlayer::new(file).await?;
 
     // 启动播放器后台任务（注意语法！）
     tokio::spawn(async move {

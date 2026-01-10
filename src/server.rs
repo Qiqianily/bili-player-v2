@@ -221,7 +221,8 @@ impl PlayerService for PlayerServer {
 async fn main() -> anyhow::Result<()> {
     // 初始化日志
     init_logger("info").await?;
-    let (mut player, command_sender) = AudioPlayer::new().await?;
+    let file = "musics.txt";
+    let (mut player, command_sender) = AudioPlayer::new(file).await?;
     // 启动播放服务
     tokio::task::spawn({
         async move {
